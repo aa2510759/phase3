@@ -2,9 +2,10 @@
     #include <stdio.h>
     #include <stdlib.h>
     void yyerror(const char *msg);
+    extern int yylex();
+    #include "lib.h"
     extern int currLine;
     extern int currPos;
-    FILE * yyin;
 %}
 
 %union{
@@ -153,12 +154,6 @@ var: ident {printf("var -> ident\n");}
 
 %%
 int main(int argc, char **argv) {
-   if (argc > 1) {
-      yyin = fopen(argv[1], "r");
-      if (yyin == NULL){
-         printf("syntax: %s filename\n", argv[1]);
-      }
-   }
    yyparse();
    return 0;
 }
