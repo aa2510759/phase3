@@ -2,8 +2,10 @@
    
 %{   
    /* write your C code here for definitions of variables and including headers */
-   //#include "y.tab.h"
+   #include <string.h>
    #include "miniL-parser.hpp"
+   extern char *identToken;
+   extern int numberToken;
 	int currLine = 1, currPos = 0;
 %}
 
@@ -69,10 +71,24 @@ DIGIT [0-9]
    /* Identifiers and Numbers */
 
 
-[a-zA-Z]([a-zA-Z0-9_]*[a-zA-Z0-9])*  {currPos += yyleng;  yylval.id_val = strdup(yytext); return IDENT;}
+[a-zA-Z]([a-zA-Z0-9_]*[a-zA-Z0-9])* {
+   currPos += yyleng;
+   char * token = new char[yyleng];
+   strcpy(token, yytext);
+   yylval.op_val = token;
+   identToken = yytext; 
+   return IDENT;
+   }
 
 
-(\.{DIGIT}+)|({DIGIT}+(\.{DIGIT}*)?([eE][+-]?[0-9]+)?) {currPos += yyleng; yylval.num_val = atof(yytext); return NUMBER;}
+(\.{DIGIT}+)|({DIGIT}+(\.{DIGIT}*)?([eE][+-]?[0-9]+)?) {
+   currPos += yyleng;
+   char * token = new char[yyleng];
+   strcpy(token, yytext);
+   yylval.op_val = token;
+   numberToken = atoi(yytext); 
+   return IDENT;
+   }
 
    /* Other Special Symbols */
 
@@ -101,5 +117,3 @@ DIGIT [0-9]
 . {printf("Error at line %d, column %d: unrecognized symbol \"%s\"\n", currLine, currPos, yytext);} 
 
 %%	/* C functions used in lexer */
-
-

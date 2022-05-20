@@ -1,16 +1,83 @@
 %{
     #include <stdio.h>
     #include <stdlib.h>
-    void yyerror(const char *msg);
     extern int yylex();
     #include "lib.h"
-    extern int currLine;
-    extern int currPos;
+    #include<string>
+    #include<vector>
+    #include<string.h>
+
+extern int yylex(void);
+void yyerror(const char *msg);
+void yyerror(const char *msg,const  char *value);
+bool checkDeclaration(std::string &value);
+extern int currLine;
+
+char *identToken;
+int numberToken;
+int  count_names = 0;
+
+enum Type { Integer, Array };
+
+struct Symbol {
+  std::string name;
+  Type type;
+};
+
+struct Function {
+  std::string name;
+  std::vector<Symbol> declarations;
+};
+
+std::vector <Function> symbol_table;
+
+
+Function *get_function() {
+  int last = symbol_table.size()-1;
+  return &symbol_table[last];
+}
+
+bool find(std::string &value) {
+  Function *f = get_function();
+  for(int i=0; i < f->declarations.size(); i++) {
+    Symbol *s = &f->declarations[i];
+    if (s->name == value) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void add_function_to_symbol_table(std::string &value) {
+  Function f; 
+  f.name = value; 
+  symbol_table.push_back(f);
+}
+
+void add_variable_to_symbol_table(std::string &value, Type t) {
+  Symbol s;
+  s.name = value;
+  s.type = t;
+  Function *f = get_function();
+  f->declarations.push_back(s);
+}
+
+void print_symbol_table(void) {
+  printf("symbol table:\n");
+  printf("--------------------\n");
+  for(int i=0; i<symbol_table.size(); i++) {
+    printf("function: %s\n", symbol_table[i].name.c_str());
+    for(int j=0; j<symbol_table[i].declarations.size(); j++) {
+      printf("  locals: %s\n", symbol_table[i].declarations[j].name.c_str());
+    }
+  }
+  printf("--------------------\n");
+}
+
 %}
 
 %union{
-  int num_val;
-  char* id_val;
+ char *op_val;
 }
 
 %error-verbose
@@ -19,8 +86,6 @@
 %token BEGIN_LOCALS END_LOCALS BEGIN_BODY END_BODY INTEGER ARRAY ENUM
 %token OF IF THEN ENDIF ELSE FOR WHILE DO BEGINLOOP ENDLOOP READ WRITE
 %token TRUE FALSE RETURN COLON COMMA SEMICOLON CONTINUE
-%token <id_val> IDENT
-%token <num_val> NUMBER
 %right ASSIGN
 %left OR 
 %left AND
@@ -30,10 +95,13 @@
 %left MULT DIV MOD
 %left L_SQAURE_BRACKET R_SQUARE_BRACKET
 %left L_PAREN R_PAREN 
+%token <op_val> NUMBER 
+%token <op_val> IDENT
+%type <op_val> symbol 
 
 %%
 
-ident: IDENT {printf("ident -> IDENT %s\n", yylval.id_val);}
+ident: IDENT {printf("ident -> IDENT %s\n", $1);}
 
 prog_start: functions {printf("prog_start -> functions\n");}
             | error {yyerrok; yyclearin;}
@@ -155,9 +223,27 @@ var: ident {printf("var -> ident\n");}
 %%
 int main(int argc, char **argv) {
    yyparse();
+   print_symbol_table();
    return 0;
 }
 
-void yyerror(const char *msg) {
-    printf("** Line %d, position %d: %s\n", currLine, currPos, msg);
+void yyerror(const char *msg)
+{
+   printf("** Line %d: %s\n", currLine, msg);
+   exit(1);
+}
+
+void yyerror(const char *msg, const char *value)
+{
+ printf("** Line %d: Error: Token \"%s\" %s\n", currLine, value, msg);
+   exit(1);
+}
+
+bool checkDeclaration(std::string &value)
+{
+  if (find(value))
+  { printf("testing ... true ... checkDeclaration\n");
+  return true;}
+  else
+   yyerror("used but not declared\n", value.c_str());
 }
