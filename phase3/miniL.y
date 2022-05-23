@@ -97,7 +97,9 @@ void print_symbol_table(void) {
 %left L_PAREN R_PAREN 
 %token <op_val> NUMBER 
 %token <op_val> IDENT
-// %type <op_val> symbol 
+%type <op_val> var
+%type <op_val> expression
+
 
 %%
 
@@ -143,6 +145,7 @@ declaration:   IDENT identifiers COLON ENUM L_PAREN IDENT identifiers R_PAREN
             |  IDENT identifiers COLON INTEGER 
             {
               // add the variable to the symbol table.
+              
               std::string value = $1;
               Type t = Integer;
               add_variable_to_symbol_table(value, t);
@@ -166,12 +169,22 @@ statements: statement SEMICOLON states
             ;
 
 statement: var ASSIGN expression 
+{
+  std::string value = $1;
+  checkDeclaration( value);
+  printf("= %s, %s\n", $1, $3);
+}
             | IF bool_expr THEN statements ENDIF 
             | IF bool_expr THEN statements ELSE statements ENDIF 
             | WHILE bool_expr BEGINLOOP statements ENDLOOP 
             | DO BEGINLOOP statements ENDLOOP WHILE bool_expr 
             | READ var vars 
             | WRITE var vars 
+            {
+              std::string value $2;
+              checkDeclaration(value);
+              printf("-> %s\n", $2);
+            }
             | CONTINUE 
             | RETURN expression 
             ;
@@ -250,7 +263,7 @@ var: IDENT
 %%
 int main(int argc, char **argv) {
    yyparse();
-   print_symbol_table();
+   //print_symbol_table();
    return 0;
 }
 
@@ -269,8 +282,8 @@ void yyerror(const char *msg, const char *value)
 bool checkDeclaration(std::string &value)
 {
   if (find(value))
-  { printf("testing ... true ... checkDeclaration\n");
-  return true;}
+  { /*printf("testing ... true ... checkDeclaration\n");
+  return true;*/}
   else
    yyerror("used but not declared\n", value.c_str());
 }
