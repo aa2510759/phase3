@@ -75,7 +75,7 @@ DIGIT [0-9]
    currPos += yyleng;
    char * token = new char[yyleng];
    strcpy(token, yytext);
-   yylval.op_val = token;
+   yylval.id_val = token;
    identToken = yytext; 
    return IDENT;
    }
@@ -85,9 +85,9 @@ DIGIT [0-9]
    currPos += yyleng;
    char * token = new char[yyleng];
    strcpy(token, yytext);
-   yylval.op_val = token;
+   yylval.id_val = token;
    numberToken = atoi(yytext); 
-   return IDENT;
+   return NUMBER;
    }
 
    /* Other Special Symbols */

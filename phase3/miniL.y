@@ -6,6 +6,11 @@
     #include<string>
     #include<vector>
     #include<string.h>
+    #include <map>
+    #include <set>
+
+std::map<std::string, int> funcs;
+std::map<std::string, int> vars_;
 
 extern int yylex(void);
 void yyerror(const char *msg);
@@ -13,9 +18,16 @@ void yyerror(const char *msg,const  char *value);
 bool checkDeclaration(std::string &value);
 extern int currLine;
 
+std::map<std::string, std::string> varTemp;
+std::map<std::string, int> arrSize;
+
+
 char *identToken;
 int numberToken;
 int  count_names = 0;
+int tempCount = 0;       
+int labelCount = 0;              
+bool mainFunc = false;                    
 
 enum Type { Integer, Array };
 
@@ -24,13 +36,13 @@ struct Symbol {
   Type type;
 };
 
+
 struct Function {
   std::string name;
   std::vector<Symbol> declarations;
 };
 
 std::vector <Function> symbol_table;
-
 
 Function *get_function() {
   int last = symbol_table.size()-1;
@@ -74,10 +86,25 @@ void print_symbol_table(void) {
   printf("--------------------\n");
 }
 
+std::string new_temp();
+std::string new_label();
+
+
 %}
 
 %union{
- char *op_val;
+ char *id_val;
+ int num_val;
+
+ struct E {
+    char* place;
+    char* code;
+    bool arr;
+  } expr_;
+
+  struct S {
+    char* code;
+  } stat_;
 }
 
 %error-verbose
@@ -95,14 +122,18 @@ void print_symbol_table(void) {
 %left MULT DIV MOD
 %left L_SQAURE_BRACKET R_SQUARE_BRACKET
 %left L_PAREN R_PAREN 
-%token <op_val> NUMBER 
-%token <op_val> IDENT
-%type <op_val> var
-%type <op_val> expression
+%token <num_val> NUMBER 
+%token <id_val> IDENT
 
+%type <expr_> ident
+%type <expr_> declarations declaration identifiers var vars
+%type <stat_> statements statement 
+%type <expr_> expression expressions mult_expr term boolExp relation_and_expr relation_expr comp
 
 %%
 
+ident : IDENT
+      ;
 prog_start: functions 
             | error {yyerrok; yyclearin;}
             ;
@@ -111,22 +142,13 @@ functions:  /*empty*/
             | function functions 
             ;
 
-function:   FUNCTION IDENT
-{
-  // midrule:
-  // add the function to the symbol table.
-  std::string func_name = $2;
-  add_function_to_symbol_table(func_name);
-  {printf("func %s\n", $2);}
-}
+function:   FUNCTION ident
 SEMICOLON BEGIN_PARAMS declarations END_PARAMS BEGIN_LOCALS declarations END_LOCALS 
-{}
 BEGIN_BODY statements END_BODY 
-{printf("endfunc\n");}
             ;
 
 identifiers: /*empty*/
-            | COMMA IDENT identifiers
+            | COMMA ident identifiers
             ;
    
 
@@ -134,31 +156,9 @@ declarations: /*empty*/
             | declaration SEMICOLON declarations 
             ;
 
-declaration:   IDENT identifiers COLON ENUM L_PAREN IDENT identifiers R_PAREN 
-            {
-              // add the variable to the symbol table.
-              std::string value = $1;
-              Type t = Integer;
-              add_variable_to_symbol_table(value, t);
-              {printf(". %s\n", $1);}
-            }
-            |  IDENT identifiers COLON INTEGER 
-            {
-              // add the variable to the symbol table.
-              
-              std::string value = $1;
-              Type t = Integer;
-              add_variable_to_symbol_table(value, t);
-              {printf(". %s\n", $1);}
-            }
-            |  IDENT identifiers COLON ARRAY L_SQAURE_BRACKET NUMBER R_SQUARE_BRACKET OF INTEGER 
-            {
-              // add the variable to the symbol table.
-              std::string value = $1;
-              Type t = Integer;
-              add_variable_to_symbol_table(value, t);
-              {printf(". %s\n", $1);}
-              }
+declaration:  ident identifiers COLON ENUM L_PAREN ident identifiers R_PAREN 
+            |  ident identifiers COLON INTEGER 
+            |  ident identifiers COLON ARRAY L_SQAURE_BRACKET NUMBER R_SQUARE_BRACKET OF INTEGER 
             ;
 
 states: /*empty*/ 
@@ -169,22 +169,12 @@ statements: statement SEMICOLON states
             ;
 
 statement: var ASSIGN expression 
-{
-  std::string value = $1;
-  checkDeclaration( value);
-  printf("= %s, %s\n", $1, $3);
-}
             | IF bool_expr THEN statements ENDIF 
             | IF bool_expr THEN statements ELSE statements ENDIF 
             | WHILE bool_expr BEGINLOOP statements ENDLOOP 
             | DO BEGINLOOP statements ENDLOOP WHILE bool_expr 
             | READ var vars 
             | WRITE var vars 
-            {
-              std::string value $2;
-              checkDeclaration(value);
-              printf("-> %s\n", $2);
-            }
             | CONTINUE 
             | RETURN expression 
             ;
@@ -214,11 +204,27 @@ relation_expr: expression comp expression
             ;
 
 comp: EQ 
+{
+  
+};
             | NEQ 
-            | LT 
+            {
+              
+            };
+            | LT {
+              
+            };
             | GT 
-            | LTE 
+            {
+           
+            };
+            | LTE {
+           
+            };
             | GTE 
+            {
+             
+            };
             ;
 
 expressions: /*empty*/ 
@@ -244,20 +250,104 @@ multiplicative_expr: term mult_expr
             ;
 
 term: var 
+{
+  std::string dst = new_temp();
+  std::string temp;
+  if ($1.arr){
+    temp.append($1.code);
+    temp.append(". ");
+    temp.append(dst);
+    temp.append("\n");
+    temp += "=[] " + dst + ", ";
+    temp.append($1.place);
+    temp.append("\n");
+  }
+  else{
+    temp.append(". ");
+    temp.append(dst);
+    temp.append("\n");
+    temp = temp + "= " + dst + ", ";
+    temp.append($1.place); 
+    temp.append("\n");
+    temp.append($1.code);
+  }
+  if (varTemp.find($1.place) != varTemp.end())
+  {
+    varTemp[$1.place] = dst;
+  }
+  $$.code= strdup(temp.c_str());
+  $$.place = strdup(dst.c_str());
+}
             | SUB var 
             | NUMBER 
             | SUB NUMBER 
             | L_PAREN expression R_PAREN 
             | SUB L_PAREN expression R_PAREN 
-            | IDENT L_PAREN expressions R_PAREN 
+            | ident L_PAREN expressions R_PAREN 
             ;
 
-vars: /*empty*/ 
-            | COMMA var vars 
+vars: var COMMA vars
+{
+  std::string temp;
+  temp.append($1.code);
+  if ($1.arr)
+  {
+    temp.append(".[]| ");
+  } else {
+    temp.append(".| ");
+  }
+  temp.append($1.place);
+  temp.append("\n");
+  temp.append($3.code);
+  $$.code = strdup(temp.c_str());
+  $$.place = strdup("");
+}
+            | var
+            {
+              std::string temp;
+              temp.append($1.code);
+              if($1.arr)
+              {
+                temp.append(".[]| ");
+              } else {
+                temp.append(".| ");
+              }
+              temp.append($1.place);
+              temp.append("\n");
+              $$.place = strdup(temp.c_str());
+              $$.code = strdup("");
+            }
             ;
 
-var: IDENT 
-            | IDENT L_SQAURE_BRACKET expression R_SQUARE_BRACKET 
+var: ident 
+{
+   std::string temp;
+   std::string ident = $1.place;
+   if(funcs.find(ident) == funcs.end() && varTemp.find(ident) == varTemp.end()){
+     printf("Identifiers %s is not declared.\n", ident.c_str());
+   } else if (arrSize[ident] > 1) {
+     printf("Did not provide index for array Identifier %s\n", ident.c_str());
+   }
+   $$.code = strdup(""); 
+   $$.place = strdup(ident.c_str()); 
+   $$.arr = false; 
+}
+            | ident L_SQAURE_BRACKET expression R_SQUARE_BRACKET 
+            {
+              std::string temp;
+              std::string ident = $1.place;
+              if (funcs.find(ident) == funcs.end() && varTemp.find(ident) == varTemp.end()){
+                printf("Identifier %s is not declared.\n", ident.c_str());
+              } else if (arrSize[ident] == 1){
+                printf("Provided index for non-array Identifier %s \n", ident.c_str());
+              }
+              temp.append($1.place);
+              temp.append(", ");
+              temp.append($3.place);
+              $$.code = strdup($3.place);
+              $$.place = strdup(temp.c_str());
+              $$.arr = true;
+            }
             ;
 
 %%
@@ -278,6 +368,21 @@ void yyerror(const char *msg, const char *value)
  printf("** Line %d: Error: Token \"%s\" %s\n", currLine, value, msg);
    exit(1);
 }
+
+std::string new_temp()
+{
+  std::string t = "t" + std::to_string(tempCount);
+   tempCount++;
+   return t;
+}
+
+std::string new_label()
+{
+  std::string l = "l" + std::to_string(labelCount);
+   labelCount++;
+   return l;
+}
+
 
 bool checkDeclaration(std::string &value)
 {
