@@ -83,10 +83,7 @@ DIGIT [0-9]
 
 (\.{DIGIT}+)|({DIGIT}+(\.{DIGIT}*)?([eE][+-]?[0-9]+)?) {
    currPos += yyleng;
-   char * token = new char[yyleng];
-   strcpy(token, yytext);
-   yylval.id_val = token;
-   numberToken = atoi(yytext); 
+   yylval.num_val = atoi(yytext); 
    return NUMBER;
    }
 
