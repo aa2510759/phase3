@@ -9,17 +9,11 @@
     #include <map>
     #include <set>
 
-std::map<std::string, int> funcs;
-std::map<std::string, int> vars_;
-
 extern int yylex(void);
 void yyerror(const char *msg);
 void yyerror(const char *msg,const  char *value);
 bool checkDeclaration(std::string &value);
 extern int currLine;
-
-std::map<std::string, std::string> varTemp;
-std::map<std::string, int> arrSize;
 
 
 char *identToken;
@@ -29,65 +23,8 @@ int tempCount = 0;
 int labelCount = 0;              
 bool mainFunc = false;                    
 
-enum Type { Integer, Array };
-
-struct Symbol {
-  std::string name;
-  Type type;
-};
-
-struct Function {
-  std::string name;
-  std::vector<Symbol> declarations;
-};
-
-std::vector <Function> symbol_table;
-
-Function *get_function() {
-  int last = symbol_table.size()-1;
-  return &symbol_table[last];
-}
-
-bool find(std::string &value) {
-  Function *f = get_function();
-  for(int i=0; i < f->declarations.size(); i++) {
-    Symbol *s = &f->declarations[i];
-    if (s->name == value) {
-      return true;
-    }
-  }
-  return false;
-}
-
-void add_function_to_symbol_table(std::string &value) {
-  Function f; 
-  f.name = value; 
-  symbol_table.push_back(f);
-}
-
-void add_variable_to_symbol_table(std::string &value, Type t) {
-  Symbol s;
-  s.name = value;
-  s.type = t;
-  Function *f = get_function();
-  f->declarations.push_back(s);
-}
-
-void print_symbol_table(void) {
-  printf("symbol table:\n");
-  printf("--------------------\n");
-  for(int i=0; i<symbol_table.size(); i++) {
-    printf("function: %s\n", symbol_table[i].name.c_str());
-    for(int j=0; j<symbol_table[i].declarations.size(); j++) {
-      printf("  locals: %s\n", symbol_table[i].declarations[j].name.c_str());
-    }
-  }
-  printf("--------------------\n");
-}
-
 std::string new_temp();
 std::string new_label();
-
 
 %}
 
@@ -158,16 +95,16 @@ function:   FUNCTION ident SEMICOLON BEGIN_PARAMS declarations END_PARAMS BEGIN_
   std::string temp = "func ";
   temp.append($2.place);
   temp.append("\n");
-  std::string s = $2.place;
 
-  if(s == "main") 
+  std::string name = $2.place;
+  if(name == "main") // checks ident name for main
   {mainFunc = true;}
 
-  temp.append($5.code);
+  temp.append($5.code); // declarations appended
   std::string decs = $5.code;
-  int decNum = 0;
+  int decNum = 0; 
 
-  while(decs.find(".") != std::string::npos)
+  while(decs.find(".") != std::string::npos) // iterates through the beginparams declarations
   {
     int pos = decs.find(".");
     decs.replace (pos, 1, "=");
@@ -175,18 +112,20 @@ function:   FUNCTION ident SEMICOLON BEGIN_PARAMS declarations END_PARAMS BEGIN_
     decNum++;
     decs.replace(decs.find("\n", pos), 1, part);
   }
+
   temp.append(decs);
+
   temp.append($8.code);
-  std::string statements = $11.code;
+
+  std::string statements = $11.code; 
 
   if (statements.find("continue") != std::string::npos)
   {printf("ERROR: Continue outsde loop in function %s\n", $2.place);}
 
   temp.append(statements);
-  temp.append("endfunc\n");
+  temp.append("endfunc\n\n");
   printf("%s",temp.c_str());
-}
-      ;
+};
 
 identifiers: ident
 {
@@ -205,7 +144,6 @@ identifiers: ident
             }
             ;
    
-
 declarations: /*empty*/ 
             {
                 $$.code = strdup("");
@@ -232,7 +170,8 @@ declaration:  identifiers COLON ENUM L_PAREN identifiers R_PAREN
               size_t oldpos = 0;
               size_t pos = 0;
 
-              while (cont) {pos = idents.find("|", oldpos);
+              while (cont) {
+                pos = idents.find("|", oldpos);
                 if (pos == std::string::npos) 
                 {
                 temp.append(". ");
@@ -255,6 +194,42 @@ declaration:  identifiers COLON ENUM L_PAREN identifiers R_PAREN
               $$.place = strdup("");
             }
             |  identifiers COLON ARRAY L_SQAURE_BRACKET NUMBER R_SQUARE_BRACKET OF INTEGER 
+            {  
+              std::string vars($1.place);
+              std::string temp;
+              std::string variable;
+              bool cont = true;
+
+              size_t oldpos = 0;
+              size_t pos = 0;
+
+              while (cont) {
+              pos = vars.find("|", oldpos);
+
+              if (pos == std::string::npos) {
+              temp.append(".[] ");
+              variable = vars.substr(oldpos, pos);
+              temp.append(variable);
+              temp.append(", ");
+              temp.append(std::to_string($5));
+              temp.append("\n");
+              cont = false;
+              }
+              else {
+              size_t len = pos - oldpos;
+              temp.append(".[] ");
+              variable = vars.substr(oldpos, len);
+              temp.append(variable);
+              temp.append(", ");
+              temp.append(std::to_string($5));
+              temp.append("\n");
+              }
+          
+              oldpos = pos + 1;
+            }
+            $$.code = strdup(temp.c_str());
+            $$.place = strdup("");	      
+            } 
             ;
 
 statements: statement SEMICOLON statements
@@ -280,17 +255,20 @@ statement: var ASSIGN expression
   temp.append($1.code);
   temp.append($3.code);
   std::string part = $3.place;
+  /*
   if($1.arr && $3.arr)
   {
     part = new_temp();
     temp.append(". ");
     temp.append(part);
     temp.append("\n");
+
     temp.append("=[] ");
     temp.append(part);
     temp.append(", ");
     temp.append($3.place);
     temp.append("\n");
+
     temp.append("[]= ");
   }
   else if ($1.arr) {
@@ -301,7 +279,8 @@ statement: var ASSIGN expression
   }
   else{
     temp.append("= ");
-  }
+  } */
+  temp.append("= ");
   temp.append($1.place);
   temp.append(", ");
   temp.append(part);
@@ -475,6 +454,7 @@ statement: var ASSIGN expression
               std::string temp;
               temp.append($2.code);
               temp.append("ret ");
+              temp.append($2.place);
               temp.append("\n");
 
               $$.code = strdup(temp.c_str());
@@ -507,8 +487,7 @@ bool_expr: relation_and_expr
 
               $$.code = strdup(temp.c_str());
               $$.place = strdup(dst.c_str());
-            }
-            ;
+            };
 
 relation_and_expr: relation_expr 
 {
@@ -521,7 +500,7 @@ relation_and_expr: relation_expr
               std::string dst = new_temp();
 
               temp.append($1.code);
-              temp.append("$3.code");
+              temp.append($3.code);
 
               temp.append(". ");
               temp.append(dst);
@@ -637,48 +616,48 @@ comp: EQ
   std::string temp;
   temp.append("== ");
 
-  $$.code = strdup(temp.c_str());
-  $$.place = strdup("");
+  $$.code = strdup("");
+  $$.place = strdup(temp.c_str());
 }
             | NEQ 
             {              
               std::string temp;
               temp.append("!= ");
 
-              $$.code = strdup(temp.c_str());
-              $$.place = strdup("");
+              $$.code = strdup("");
+              $$.place = strdup(temp.c_str());
             }
             | LT 
             {  
               std::string temp;
               temp.append("< ");
 
-              $$.code = strdup(temp.c_str());
-              $$.place = strdup("");
+              $$.code = strdup("");
+              $$.place = strdup(temp.c_str());
             }
             | GT 
             {
               std::string temp;
               temp.append("> ");
 
-              $$.code = strdup(temp.c_str());
-              $$.place = strdup("");
+              $$.code = strdup("");
+              $$.place = strdup(temp.c_str());
             }
             | LTE 
             {
               std::string temp;
               temp.append("<= ");
 
-              $$.code = strdup(temp.c_str());
-              $$.place = strdup("");
+              $$.code = strdup("");
+              $$.place = strdup(temp.c_str());
             }
             | GTE 
             {
               std::string temp;
               temp.append(">= ");
 
-              $$.code = strdup(temp.c_str());
-              $$.place = strdup("");
+              $$.code = strdup("");
+              $$.place = strdup(temp.c_str());
             }
             ;
 
@@ -712,8 +691,6 @@ expressions: /*empty*/
             }
             ;
 
-
-
 expression: multiplicative_expr 
             {
               $$.code = strdup($1.code);
@@ -729,6 +706,7 @@ expression: multiplicative_expr
               temp.append(". ");
               temp.append($$.place);
               temp.append("\n");
+
               temp.append("+ ");
               temp.append($$.place);
               temp.append(", ");
@@ -749,6 +727,7 @@ expression: multiplicative_expr
               temp.append(". ");
               temp.append($$.place);
               temp.append("\n");
+
               temp.append("- ");
               temp.append($$.place);
               temp.append(", ");
@@ -758,9 +737,7 @@ expression: multiplicative_expr
               temp.append("\n");
 
               $$.code = strdup(temp.c_str());
-            }
-            ;
-
+            };
 
 multiplicative_expr: term 
 {
@@ -775,6 +752,7 @@ multiplicative_expr: term
               temp.append(". ");
               temp.append($$.place);
               temp.append("\n");
+
               temp.append($1.code);
               temp.append($3.code);
               temp.append("* ");
@@ -795,6 +773,7 @@ multiplicative_expr: term
               temp.append(". ");
               temp.append($$.place);
               temp.append("\n");
+
               temp.append($1.code);
               temp.append($3.code);
               temp.append("/ ");
@@ -815,6 +794,7 @@ multiplicative_expr: term
               temp.append(". ");
               temp.append($$.place);
               temp.append("\n");
+
               temp.append($1.code);
               temp.append($3.code);
               temp.append("% ");
@@ -826,11 +806,11 @@ multiplicative_expr: term
               temp.append("\n");
 
               $$.code = strdup(temp.c_str());
-            }
-            ;
+            }            ;
 
 term: var 
 {
+  /*
   if ($1.arr){
     std::string temp;
     std::string dst = new_temp();
@@ -852,14 +832,21 @@ term: var
     $$.code = strdup($1.code);
     $$.place = strdup($1.place);
   }
+
+  */
+
+  $$.code = strdup($1.code);
+  $$.place = strdup($1.place);
 }
             | SUB var 
             {
+
                 std::string temp;
                 temp.append($2.code);
                 temp.append(". ");
                 temp.append($$.place);
                 temp.append("\n");
+
                 if ($2.arr) {
                 temp.append("=[] ");
                 temp.append($$.place);
@@ -883,12 +870,11 @@ term: var
                 temp.append(", -1\n");
   
                 $$.code = strdup(temp.c_str());
-                
                 $$.arr = false;
 
             }
             | NUMBER
-             {
+            {
             $$.code = strdup("");
             $$.place = strdup(std::to_string($1).c_str());
             }
@@ -936,10 +922,8 @@ term: var
               }
             ;
 
-
 vars:            var
-{
-  
+{ 
   std::string temp;
   temp.append($1.code);
   if ($1.arr)
@@ -953,9 +937,8 @@ vars:            var
   $$.code = strdup(temp.c_str());
   $$.place = strdup(""); 
 }
-| var COMMA vars
-{
-  
+  | var COMMA vars
+  {
   std::string temp;
   temp.append($1.code);
   if ($1.arr)
@@ -970,19 +953,10 @@ vars:            var
   
   $$.code = strdup(temp.c_str());
   $$.place = strdup(""); 
-};
+  };
 
 var: ident 
 {
-   std::string temp;
-   std::string ident = $1.place;
-
-   /*if(funcs.find(ident) == funcs.end() && varTemp.find(ident) == varTemp.end()){
-     printf("Identifier %s is not declared.\n", ident.c_str());
-   } else if (arrSize[ident] > 1) {
-     printf("Did not provide index for array Identifier %s\n", ident.c_str());
-   }*/
-
    $$.code = strdup(""); 
    $$.place = strdup($1.place); 
    $$.arr = false; 
@@ -990,15 +964,6 @@ var: ident
             | ident L_SQAURE_BRACKET expression R_SQUARE_BRACKET 
             {
               std::string temp;
-              std::string ident = $1.place;
-
-              /*
-              if (funcs.find(ident) == funcs.end() && varTemp.find(ident) == varTemp.end()){
-                printf("Identifier %s is not declared.\n", ident.c_str());
-              } else if (arrSize[ident] == 1){
-                printf("Provided index for non-array Identifier %s \n", ident.c_str());
-              } */
-
               temp.append($1.place);
               temp.append(", ");
               temp.append($3.place);
@@ -1042,11 +1007,3 @@ std::string new_label()
    return l;
 }
 
-bool checkDeclaration(std::string &value)
-{
-  if (find(value))
-  { /*printf("testing ... true ... checkDeclaration\n");
-  return true;*/}
-  else
-   yyerror("used but not declared\n", value.c_str());
-}
