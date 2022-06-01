@@ -9,22 +9,22 @@
     #include <map>
     #include <set>
 
+std::string new_temp();
+std::string new_label();
 extern int yylex(void);
 void yyerror(const char *msg);
-void yyerror(const char *msg,const  char *value);
-bool checkDeclaration(std::string &value);
 extern int currLine;
 
+std::map<std::string, int> variables;
+std::map<std::string, int> functions;
 
 char *identToken;
 int numberToken;
-int  count_names = 0;
+
 int tempCount = 0;       
 int labelCount = 0;              
 bool mainFunc = false;                    
 
-std::string new_temp();
-std::string new_label();
 
 %}
 
@@ -65,11 +65,17 @@ std::string new_label();
 %type <expr_> ident 
 %type <expr_> declarations declaration identifiers var 
 %type <stat_> statements statement 
-%type <expr_> expression expressions multiplicative_expr term bool_expr relation_and_expr relation_expr comp
+%type <expr_> expression expressions multiplicative_expr term bool_expr relation_and_expr relation_expr comp local_ident
 
 %type <expr_> vars
 
 %%
+
+local_ident : IDENT 
+{
+  $$.code = strdup("");
+  $$.place = strdup($1);
+};
 
 ident : IDENT
 {
@@ -163,73 +169,37 @@ declarations: /*empty*/
 declaration:  identifiers COLON ENUM L_PAREN identifiers R_PAREN 
             |  identifiers COLON INTEGER 
             {
-              std::string idents($1.place);
+              std::string part($1.place);
               std::string temp;
               std::string variable;
               bool cont = true;
               size_t oldpos = 0;
               size_t pos = 0;
 
-              while (cont) {
-                pos = idents.find("|", oldpos);
-                if (pos == std::string::npos) 
-                {
+              while (cont) {   // parses through the variables via "|"
+                pos = part.find("|", oldpos);
+                if (pos == std::string::npos){
                 temp.append(". ");
-                variable = idents.substr(oldpos,pos);
+                variable = part.substr(oldpos,pos);
                 temp.append(variable);
                 temp.append("\n");
+
                 cont = false;
                 }
-                else 
-                {
+                else {
                 size_t len = pos - oldpos;
                 temp.append(". ");
-                variable = idents.substr(oldpos, len);
+                variable = part.substr(oldpos, len);
                 temp.append(variable);
                 temp.append("\n");
                 }
                 oldpos = pos + 1;
               }
+
               $$.code = strdup(temp.c_str());
               $$.place = strdup("");
             }
             |  identifiers COLON ARRAY L_SQAURE_BRACKET NUMBER R_SQUARE_BRACKET OF INTEGER 
-            {  
-              std::string vars($1.place);
-              std::string temp;
-              std::string variable;
-              bool cont = true;
-
-              size_t oldpos = 0;
-              size_t pos = 0;
-
-              while (cont) {
-              pos = vars.find("|", oldpos);
-
-              if (pos == std::string::npos) {
-              temp.append(".[] ");
-              variable = vars.substr(oldpos, pos);
-              temp.append(variable);
-              temp.append(", ");
-              temp.append(std::to_string($5));
-              temp.append("\n");
-              cont = false;
-              }
-              else {
-              size_t len = pos - oldpos;
-              temp.append(".[] ");
-              variable = vars.substr(oldpos, len);
-              temp.append(variable);
-              temp.append(", ");
-              temp.append(std::to_string($5));
-              temp.append("\n");
-              }
-          
-              oldpos = pos + 1;
-            }
-            $$.code = strdup(temp.c_str());
-            $$.place = strdup("");	      
-            } 
             ;
 
 statements: statement SEMICOLON statements
@@ -242,48 +212,22 @@ statements: statement SEMICOLON statements
             }
             | statement SEMICOLON
             {
-              std::string temp;
-              temp.append($1.code);
-
-              $$.code = strdup(temp.c_str());
+              $$.code = strdup($1.code);
             }
             ;
 
 statement: var ASSIGN expression 
 {
+
   std::string temp;
+
   temp.append($1.code);
   temp.append($3.code);
-  std::string part = $3.place;
-  /*
-  if($1.arr && $3.arr)
-  {
-    part = new_temp();
-    temp.append(". ");
-    temp.append(part);
-    temp.append("\n");
 
-    temp.append("=[] ");
-    temp.append(part);
-    temp.append(", ");
-    temp.append($3.place);
-    temp.append("\n");
-
-    temp.append("[]= ");
-  }
-  else if ($1.arr) {
-    temp.append("[]= ");
-  }
-  else if ($3.arr){
-    temp.append("=[] ");
-  }
-  else{
-    temp.append("= ");
-  } */
   temp.append("= ");
   temp.append($1.place);
   temp.append(", ");
-  temp.append(part);
+  temp.append($3.place);
   temp.append("\n");
 
   $$.code = strdup(temp.c_str());
@@ -296,19 +240,19 @@ statement: var ASSIGN expression
               std::string after = new_label();
 
               temp.append($2.code);
+              
               temp.append("?:= ");
               temp.append(then_begin);
               temp.append(", ");
               temp.append($2.place);
               temp.append("\n");
 
-              temp.append(": ");
-              temp.append(then_begin);
+              temp.append(":= ");
+              temp.append(after);
               temp.append("\n");
 
-              temp.append($4.code);
               temp.append(": ");
-              temp.append(after);
+              temp.append(then_begin);
               temp.append("\n");
 
               $$.code = strdup(temp.c_str());
@@ -321,6 +265,7 @@ statement: var ASSIGN expression
               std::string after = new_label();
 
               temp.append($2.code);
+
               temp.append("?:= ");
               temp.append(then_begin);
               temp.append(", ");
@@ -328,6 +273,7 @@ statement: var ASSIGN expression
               temp.append("\n");
 
               temp.append($6.code);
+
               temp.append(":= ");
               temp.append(after);
               temp.append("\n");
@@ -337,6 +283,7 @@ statement: var ASSIGN expression
               temp.append("\n");
 
               temp.append($4.code);
+
               temp.append(": ");
               temp.append(after);
               temp.append("\n");
@@ -345,78 +292,9 @@ statement: var ASSIGN expression
             }
             | WHILE bool_expr BEGINLOOP statements ENDLOOP 
             {
-              std::string temp;
-              std::string begin_while = new_label();
-              std::string begin_loop = new_label();
-              std::string end_loop = new_label();
-              std::string statement = $4.code;
-              std::string jump;
-              jump.append(":= ");
-              jump.append(begin_while);
-              while (statement.find("continue") != std::string::npos) {
-                statement.replace(statement.find("continue"), 8 , jump);
-              }
-              temp.append(": ");
-              temp.append(begin_while);
-              temp.append("\n");
-
-              temp.append($2.code);
-              temp.append("?:= ");
-              temp.append(begin_loop);
-              temp.append(", ");
-              temp.append($2.place);
-              temp.append("\n");
-
-              temp.append(":= ");
-              temp.append(end_loop);
-              temp.append("\n");
-
-              temp.append(": ");
-              temp.append(begin_loop);
-              temp.append("\n");
-
-              temp.append(statement);
-              temp.append(":= ");
-              temp.append(begin_while);
-              temp.append("\n");
-
-              temp.append(": ");
-              temp.append(end_loop);
-              temp.append("\n");
-
-              $$.code = strdup(temp.c_str());
             }
             | DO BEGINLOOP statements ENDLOOP WHILE bool_expr 
             {
-              std::string temp;
-              std::string begin_loop = new_label();
-              std::string begin_while = new_label();
-              std::string statement = $3.code;
-              std::string jump;
-              jump.append(":= ");
-              jump.append(begin_while);
-
-              while(statement.find("continue") != std::string::npos) {
-                statement.replace(statement.find("continue"), 8, jump);
-              }
-
-              temp.append(": ");
-              temp.append(begin_loop);
-              temp.append("\n");
-
-              temp.append(statement);
-              temp.append(": ");
-              temp.append(begin_while);
-              temp.append("\n");
-
-              temp.append($6.code);
-              temp.append("?:= ");
-              temp.append(begin_loop);
-              temp.append(", ");
-              temp.append($6.place);
-              temp.append("\n");
-
-              $$.code = strdup(temp.c_str());
             }
             | READ vars 
             {
@@ -453,6 +331,7 @@ statement: var ASSIGN expression
             {
               std::string temp;
               temp.append($2.code);
+
               temp.append("ret ");
               temp.append($2.place);
               temp.append("\n");
@@ -465,6 +344,7 @@ bool_expr: relation_and_expr
 {
   $$.code = strdup($1.code);
   $$.place = strdup($1.place);
+
 }
             | relation_and_expr OR bool_expr
             {
@@ -473,6 +353,7 @@ bool_expr: relation_and_expr
 
               temp.append($1.code);
               temp.append($3.code);
+
               temp.append(". ");
               temp.append(dst);
               temp.append("\n");
@@ -491,8 +372,10 @@ bool_expr: relation_and_expr
 
 relation_and_expr: relation_expr 
 {
+  
   $$.code = strdup($1.code);
   $$.place = strdup($1.place);
+
 }
             | relation_expr AND relation_and_expr
             {
@@ -521,12 +404,37 @@ relation_and_expr: relation_expr
 
 relation_expr: expression comp expression 
 {
+  
+  std::string expr1 = new_temp();
+  std::string expr2 = new_temp();
 
   std::string dst = new_temp();
   std::string temp;  
 
   temp.append($1.code);
   temp.append($3.code);
+
+  temp.append(". ");
+  temp.append(expr1);
+  temp.append("\n");
+
+  temp.append("= ");
+  temp.append(expr1);
+  temp.append(", ");
+  temp.append($1.place);
+  temp.append("\n");
+
+  temp.append(". ");
+  temp.append(expr2);
+  temp.append("\n");
+
+  temp.append("= ");
+  temp.append(expr2);
+  temp.append(", ");
+  temp.append($3.place);
+  temp.append("\n");
+
+
   temp.append(". ");
   temp.append(dst);
   temp.append("\n");
@@ -534,9 +442,9 @@ relation_expr: expression comp expression
   temp.append($2.place);
   temp.append(dst);
   temp.append(", ");
-  temp.append($1.place);
+  temp.append(expr1);
   temp.append(", ");
-  temp.append($3.place);
+  temp.append(expr2);
   temp.append("\n");
   
   $$.code = strdup(temp.c_str());
@@ -546,14 +454,15 @@ relation_expr: expression comp expression
             {
                 std::string dst = new_temp();
                 std::string temp;  
-
-                temp.append("! ");
+                
                 temp.append($2.code);
                 temp.append($4.code);
+
                 temp.append(". ");
                 temp.append(dst);
                 temp.append("\n");
-  
+                
+                temp.append("!");
                 temp.append($3.place);
                 temp.append(dst);
                 temp.append(", ");
@@ -597,7 +506,7 @@ relation_expr: expression comp expression
             | L_PAREN bool_expr R_PAREN
             {
               $$.code = strdup($2.code);
-              $$.place = strdup($2.code);
+              $$.place = strdup($2.place);
             }
             | NOT L_PAREN bool_expr R_PAREN
             {
@@ -669,9 +578,21 @@ expressions: /*empty*/
             | expression 
             {
               std::string temp;
+              std::string expr = new_temp();
               temp.append($1.code);
-              temp.append("param ");
+
+              temp.append(". ");
+              temp.append(expr);
+              temp.append("\n");
+
+              temp.append("= ");
+              temp.append(expr);
+              temp.append(", ");
               temp.append($1.place);
+              temp.append("\n");
+
+              temp.append("param ");
+              temp.append(expr);
               temp.append("\n");
 
               $$.code = strdup(temp.c_str());
@@ -681,6 +602,7 @@ expressions: /*empty*/
             {
               std::string temp;
               temp.append($1.code);
+
               temp.append("param ");
               temp.append($1.place);
               temp.append("\n");
@@ -693,6 +615,7 @@ expressions: /*empty*/
 
 expression: multiplicative_expr 
             {
+
               $$.code = strdup($1.code);
               $$.place = strdup($1.place);
             }
@@ -809,67 +732,33 @@ multiplicative_expr: term
             }            ;
 
 term: var 
-{
-  /*
-  if ($1.arr){
-    std::string temp;
-    std::string dst = new_temp();
+{ 
 
-    temp.append($1.code);
-    temp.append(". ");
-    temp.append(dst);
-    temp.append("\n");
+  /*std::string temp;
+  std::string part = new_temp();
+  temp.append(". ");
+  temp.append(part);
+  temp.append("\n");
+  
+  temp.append("= ");
+  temp.append($1.place);
+  temp.append(", ");
+  temp.append(part);
+  temp.append("\n"); */
 
-    temp += "=[] " + dst + ", ";
-    temp.append($1.place);
-    temp.append("\n");
-
-    $$.code = strdup(temp.c_str());
-    $$.place = strdup(dst.c_str());
-    $$.arr = false; 
-  }
-  else{
-    $$.code = strdup($1.code);
-    $$.place = strdup($1.place);
-  }
-
-  */
-
-  $$.code = strdup($1.code);
+  $$.code = strdup("");
   $$.place = strdup($1.place);
+  $$.arr = false;
 }
             | SUB var 
             {
-
                 std::string temp;
-                temp.append($2.code);
-                temp.append(". ");
-                temp.append($$.place);
-                temp.append("\n");
-
-                if ($2.arr) {
-                temp.append("=[] ");
-                temp.append($$.place);
-                temp.append(", ");
+                temp.append(". -");
                 temp.append($2.place);
                 temp.append("\n");
-                }
-                else {
-                temp.append("= ");
-                temp.append($$.place);
-                temp.append(", ");
-                temp.append($2.place);
-                temp.append("\n");
-                }
 
-                $$.place = strdup(new_temp().c_str());
-                temp.append("* ");
-                temp.append($$.place);
-                temp.append(", ");
-                temp.append($$.place);
-                temp.append(", -1\n");
-  
-                $$.code = strdup(temp.c_str());
+                $$.code = strdup("");
+                $$.place = strdup(temp.c_str());
                 $$.arr = false;
 
             }
@@ -894,24 +783,18 @@ term: var
             }
             | SUB L_PAREN expression R_PAREN 
             {
-                $$.place = strdup($3.place);
-                std::string temp;
-                temp.append($3.code);
-                temp.append("* ");
-                temp.append($3.place);
-                temp.append(", ");
-                temp.append($3.place);
-                temp.append(", -1\n");
-                $$.code = strdup(temp.c_str());
             }
             | ident L_PAREN expressions R_PAREN 
             {
               $$.place = strdup(new_temp().c_str());
+
               std::string temp;
               temp.append($3.code);
+
               temp.append(". ");
               temp.append($$.place);
               temp.append("\n");
+
               temp.append("call ");
               temp.append($1.place);
               temp.append(", ");
@@ -959,7 +842,7 @@ var: ident
 {
    $$.code = strdup(""); 
    $$.place = strdup($1.place); 
-   $$.arr = false; 
+   $$.arr = false;
 }
             | ident L_SQAURE_BRACKET expression R_SQUARE_BRACKET 
             {
