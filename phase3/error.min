@@ -4,13 +4,22 @@ endparams
 beginlocals
 
   a : integer;
-  b : integer;
-  c : integer;
+  n : integer;
+  error1 : integer;
+  ##error2 : array [0] of integer;
+  ##a : integer;
+  ##miniL : integer;
+  ##if : integer;
+  
 
 endlocals
 
 beginbody
-  ## This is an error
-  error := 150;
-endbody
+  ##n := error3();
+  error1 := a;
+  a := 150;
+  ##write error1;
+  write a;
+  ## continue;
 
+endbody

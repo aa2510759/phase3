@@ -29,7 +29,8 @@ int numberToken;
 int tempCount = 0;       
 int labelCount = 0;              
 bool mainFunc = false;     
-std::string pogram_name = "miniL";
+std::string program_name = "miniL";
+bool errors_present = false;
               
 
 %}
@@ -71,7 +72,7 @@ std::string pogram_name = "miniL";
 %type <expr_> ident function_ident
 %type <expr_> declarations declaration identifiers var vars
 %type <stat_> statements statement 
-%type <expr_> expression expressions multiplicative_expr term bool_expr relation_and_expr relation_expr comp 
+%type <expr_> expression expressions multiplicative_expr term bool_expr relation_and_expr relation_expr comp function functions
 
 %%
 
@@ -85,8 +86,8 @@ ident : IDENT
 function_ident: IDENT
 {
   if (functions.find(std::string($1)) != functions.end()) {
-    std::string msg = "Can not redclare function name";
-    yyerror(msg.c_str());
+    printf("** Line: %d ERROR: Can not redclare function name\n", currLine);
+    errors_present = true;
   }
   else {
     functions.insert(std::pair<std::string,int>($1,0));
@@ -97,19 +98,21 @@ function_ident: IDENT
 
 prog_start: functions 
             {
-	if (!mainFunc)
-	{printf("No main function declared!\n");}
-
-  if(variables.find(std::string(pogram_name)) != variables.end()){
-    std::string msg = "Can not declare variable the same as program name";
-    yyerror(msg.c_str());
-  }
             }
             ;
             
 functions:  /*empty*/  
-            | function functions 
-            ;
+            | function functions
+            {
+             
+        if (!mainFunc)
+	      {printf("** Line: %d ERROR: No main function declared!\n", currLine);
+        errors_present = true;}
+            std::string temp;
+            temp.append($1.code); 
+            $$.code = strdup(temp.c_str());
+          }
+          ;
 
 function:   FUNCTION function_ident SEMICOLON BEGIN_PARAMS declarations END_PARAMS BEGIN_LOCALS declarations END_LOCALS BEGIN_BODY statements END_BODY 
 {
@@ -141,11 +144,21 @@ function:   FUNCTION function_ident SEMICOLON BEGIN_PARAMS declarations END_PARA
   std::string statements = $11.code; 
 
   if (statements.find("continue") != std::string::npos)
-  {printf("ERROR: Continue outsde loop in function %s\n", $2.place);}
+  {printf("** Line %d ERROR: Continue outsde loop in function %s\n", currLine, $2.place);
+  errors_present = true;}
 
   temp.append(statements);
   temp.append("endfunc\n\n");
+
+  $$.code = strdup(temp.c_str());
+
+  if(variables.find(std::string(program_name)) != variables.end()){
+  printf("** Line: %d ERROR: Can not declare variable the same as program name\n", currLine);
+  errors_present = true;}
+
+  if (!errors_present && mainFunc){
   printf("%s",temp.c_str());
+  }
 };
 
 identifiers: ident
@@ -217,12 +230,12 @@ declaration:  identifiers COLON ENUM L_PAREN identifiers R_PAREN
                 }
 
                 if (variables.find(variable) != variables.end()) {
-                std::string msg = "Can not redeclare variable";
-                yyerror(msg.c_str());
+                printf("** Line: %d ERROR: Can not redeclare variable\n", currLine);
+                errors_present = true;
                 }
                 else if (key_word){
-                std::string msg = "Can not declaration of reserved words";
-                yyerror(msg.c_str());
+                printf("** Line: %d ERROR: Can not declaration of reserved words\n", currLine);
+                errors_present = true;
                 }
                 else {
                 variables.insert(std::pair<std::string,int>(variable,0));
@@ -236,8 +249,8 @@ declaration:  identifiers COLON ENUM L_PAREN identifiers R_PAREN
             |  identifiers COLON ARRAY L_SQAURE_BRACKET NUMBER R_SQUARE_BRACKET OF INTEGER 
             {
               if ($5 <= 0) {
-              std::string msg = "Can not have array size be less than 1";
-              yyerror(msg.c_str());
+              printf("** Line: %d ERROR: Can not have array size be less than 1\n", currLine);
+              errors_present = true;
                 }
             }
             ;
@@ -843,8 +856,8 @@ term: var
             {
 
                 if (functions.find(std::string($1.place)) == functions.end()) {
-                std::string msg =  "Can not use undeclared function";
-                yyerror(msg.c_str());
+                printf("** Line: %d ERROR: Can not use undeclared function\n", currLine);
+                errors_present = true;
                 }
 
 
@@ -904,9 +917,10 @@ var: ident
 {
 
   if (variables.find(std::string($1.place)) == variables.end()) {
-    std::string msg = "Cannot use undeclared variable";
-    yyerror(msg.c_str());
+    printf("** Line: %d ERROR: Can not use undeclared variable\n", currLine);
+    errors_present = true;
   }
+
 
    $$.code = strdup(""); 
    $$.place = strdup($1.place); 
