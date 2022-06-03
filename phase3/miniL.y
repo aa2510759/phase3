@@ -6,14 +6,19 @@
     #include<string>
     #include<vector>
     #include<string.h>
-    #include <map>
     #include <set>
+    #include <map>
 
 std::string new_temp();
 std::string new_label();
 extern int yylex(void);
 void yyerror(const char *msg);
 extern int currLine;
+
+std::vector<std::string> key_words = {"function", "beginparams", "endparams", "beginlocals",
+"endlocals", "beginbody", "endbody", "integer", "array", "of", "if", "then",
+ "endif", "else", "while", "do", "beginloop", "endloop", "continue", 
+ "read", "write", "and", "or", "not", "true", "false", "return"};
 
 std::map<std::string, int> variables;
 std::map<std::string, int> functions;
@@ -23,8 +28,9 @@ int numberToken;
 
 int tempCount = 0;       
 int labelCount = 0;              
-bool mainFunc = false;                    
-
+bool mainFunc = false;     
+std::string pogram_name = "miniL";
+              
 
 %}
 
@@ -62,20 +68,12 @@ bool mainFunc = false;
 %token <num_val> NUMBER 
 %token <id_val> IDENT
 
-%type <expr_> ident 
-%type <expr_> declarations declaration identifiers var 
+%type <expr_> ident function_ident
+%type <expr_> declarations declaration identifiers var vars
 %type <stat_> statements statement 
-%type <expr_> expression expressions multiplicative_expr term bool_expr relation_and_expr relation_expr comp local_ident
-
-%type <expr_> vars
+%type <expr_> expression expressions multiplicative_expr term bool_expr relation_and_expr relation_expr comp 
 
 %%
-
-local_ident : IDENT 
-{
-  $$.code = strdup("");
-  $$.place = strdup($1);
-};
 
 ident : IDENT
 {
@@ -84,19 +82,36 @@ ident : IDENT
 }
 ;
 
+function_ident: IDENT
+{
+  if (functions.find(std::string($1)) != functions.end()) {
+    std::string msg = "Can not redclare function name";
+    yyerror(msg.c_str());
+  }
+  else {
+    functions.insert(std::pair<std::string,int>($1,0));
+  }
+  $$.place = strdup($1);
+  $$.code = strdup("");
+}
+
 prog_start: functions 
             {
 	if (!mainFunc)
 	{printf("No main function declared!\n");}
-            }
 
+  if(variables.find(std::string(pogram_name)) != variables.end()){
+    std::string msg = "Can not declare variable the same as program name";
+    yyerror(msg.c_str());
+  }
+            }
             ;
             
 functions:  /*empty*/  
             | function functions 
             ;
 
-function:   FUNCTION ident SEMICOLON BEGIN_PARAMS declarations END_PARAMS BEGIN_LOCALS declarations END_LOCALS BEGIN_BODY statements END_BODY 
+function:   FUNCTION function_ident SEMICOLON BEGIN_PARAMS declarations END_PARAMS BEGIN_LOCALS declarations END_LOCALS BEGIN_BODY statements END_BODY 
 {
   std::string temp = "func ";
   temp.append($2.place);
@@ -173,10 +188,11 @@ declaration:  identifiers COLON ENUM L_PAREN identifiers R_PAREN
               std::string temp;
               std::string variable;
               bool cont = true;
+              bool key_word = false; 
               size_t oldpos = 0;
               size_t pos = 0;
 
-              while (cont) {   // parses through the variables via "|"
+              while (cont) {   // parses through the identifiers via "|"
                 pos = part.find("|", oldpos);
                 if (pos == std::string::npos){
                 temp.append(". ");
@@ -193,6 +209,24 @@ declaration:  identifiers COLON ENUM L_PAREN identifiers R_PAREN
                 temp.append(variable);
                 temp.append("\n");
                 }
+
+                for (unsigned int i = 0; i < key_words.size(); ++i) {
+                if (key_words.at(i) == variable) {
+                key_word = true;
+                  }
+                }
+
+                if (variables.find(variable) != variables.end()) {
+                std::string msg = "Can not redeclare variable";
+                yyerror(msg.c_str());
+                }
+                else if (key_word){
+                std::string msg = "Can not declaration of reserved words";
+                yyerror(msg.c_str());
+                }
+                else {
+                variables.insert(std::pair<std::string,int>(variable,0));
+                }
                 oldpos = pos + 1;
               }
 
@@ -200,6 +234,12 @@ declaration:  identifiers COLON ENUM L_PAREN identifiers R_PAREN
               $$.place = strdup("");
             }
             |  identifiers COLON ARRAY L_SQAURE_BRACKET NUMBER R_SQUARE_BRACKET OF INTEGER 
+            {
+              if ($5 <= 0) {
+              std::string msg = "Can not have array size be less than 1";
+              yyerror(msg.c_str());
+                }
+            }
             ;
 
 statements: statement SEMICOLON statements
@@ -253,6 +293,11 @@ statement: var ASSIGN expression
 
               temp.append(": ");
               temp.append(then_begin);
+              temp.append("\n");
+
+              temp.append($4.code);
+              temp.append(": ");
+              temp.append(after);
               temp.append("\n");
 
               $$.code = strdup(temp.c_str());
@@ -332,6 +377,18 @@ statement: var ASSIGN expression
               std::string temp;
               temp.append($2.code);
 
+              /*std::string expr = new_temp();
+
+              temp.append(". ");
+              temp.append(expr);
+              temp.append("\n");
+
+              temp.append("= ");
+              temp.append(expr);
+              temp.append(", ");
+              temp.append($2.place);
+              temp.append("\n"); */
+
               temp.append("ret ");
               temp.append($2.place);
               temp.append("\n");
@@ -344,7 +401,6 @@ bool_expr: relation_and_expr
 {
   $$.code = strdup($1.code);
   $$.place = strdup($1.place);
-
 }
             | relation_and_expr OR bool_expr
             {
@@ -372,10 +428,8 @@ bool_expr: relation_and_expr
 
 relation_and_expr: relation_expr 
 {
-  
   $$.code = strdup($1.code);
   $$.place = strdup($1.place);
-
 }
             | relation_expr AND relation_and_expr
             {
@@ -581,7 +635,7 @@ expressions: /*empty*/
               std::string expr = new_temp();
               temp.append($1.code);
 
-              temp.append(". ");
+             /* temp.append(". ");
               temp.append(expr);
               temp.append("\n");
 
@@ -589,10 +643,10 @@ expressions: /*empty*/
               temp.append(expr);
               temp.append(", ");
               temp.append($1.place);
-              temp.append("\n");
+              temp.append("\n"); */
 
               temp.append("param ");
-              temp.append(expr);
+              temp.append($1.place);
               temp.append("\n");
 
               $$.code = strdup(temp.c_str());
@@ -615,14 +669,14 @@ expressions: /*empty*/
 
 expression: multiplicative_expr 
             {
-
+                
               $$.code = strdup($1.code);
               $$.place = strdup($1.place);
             }
             | multiplicative_expr ADD expression
             {
               $$.place = strdup(new_temp().c_str());
-  
+
               std::string temp;
               temp.append($1.code);
               temp.append($3.code);
@@ -733,32 +787,33 @@ multiplicative_expr: term
 
 term: var 
 { 
-
-  /*std::string temp;
-  std::string part = new_temp();
-  temp.append(". ");
-  temp.append(part);
-  temp.append("\n");
   
-  temp.append("= ");
-  temp.append($1.place);
-  temp.append(", ");
-  temp.append(part);
-  temp.append("\n"); */
-
-  $$.code = strdup("");
+  $$.code = strdup($1.code);
   $$.place = strdup($1.place);
   $$.arr = false;
 }
             | SUB var 
-            {
+            {   
+                $$.place = strdup(new_temp().c_str());
                 std::string temp;
                 temp.append(". -");
+                temp.append($$.place);
+                temp.append("\n");
+
+                temp.append("= ");
+                temp.append($$.place);
+                temp.append(", ");
                 temp.append($2.place);
                 temp.append("\n");
 
-                $$.code = strdup("");
-                $$.place = strdup(temp.c_str());
+                temp.append("* ");
+                temp.append($$.place);
+                temp.append(", ");
+                temp.append($$.place);
+                temp.append(", -1\n");
+
+                $$.code = strdup(temp.c_str());
+               
                 $$.arr = false;
 
             }
@@ -786,6 +841,13 @@ term: var
             }
             | ident L_PAREN expressions R_PAREN 
             {
+
+                if (functions.find(std::string($1.place)) == functions.end()) {
+                std::string msg =  "Can not use undeclared function";
+                yyerror(msg.c_str());
+                }
+
+
               $$.place = strdup(new_temp().c_str());
 
               std::string temp;
@@ -840,6 +902,12 @@ vars:            var
 
 var: ident 
 {
+
+  if (variables.find(std::string($1.place)) == variables.end()) {
+    std::string msg = "Cannot use undeclared variable";
+    yyerror(msg.c_str());
+  }
+
    $$.code = strdup(""); 
    $$.place = strdup($1.place); 
    $$.arr = false;
