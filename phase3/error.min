@@ -1,4 +1,4 @@
-function mai;
+function main;
 beginparams
 endparams
 beginlocals
@@ -20,6 +20,7 @@ beginbody
   a := 150;
   ##write error1;
   write a;
+  write error1;
   ## continue;
 
 endbody
