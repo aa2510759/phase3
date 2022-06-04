@@ -11,6 +11,7 @@
 
 std::string new_temp();
 std::string new_label();
+std::string new_enum();
 extern int yylex(void);
 void yyerror(const char *msg);
 extern int currLine;
@@ -27,8 +28,10 @@ char *identToken;
 int numberToken;
 
 int tempCount = 0;       
-int labelCount = 0;              
-bool mainFunc = false;     
+int labelCount = 0;  
+int enumCount;            
+bool mainFunc = false; 
+bool inMain = false;    
 std::string program_name = "miniL";
 bool errors_present = false;
               
@@ -98,20 +101,32 @@ function_ident: IDENT
 
 prog_start: functions 
             {
-            }
+              if (!mainFunc){
+                printf("** Line: %d ERROR: No main function declared!\n", currLine);
+                mainFunc = false;
+                errors_present = true;
+                }
+                std::string temp;
+                temp.append($1.code);
+
+                if (!errors_present && mainFunc ){
+                  printf("%s",temp.c_str());
+                  }
+  
+          }
             ;
             
 functions:  /*empty*/  
             | function functions
-            {
-             
-        if (!mainFunc)
-	      {printf("** Line: %d ERROR: No main function declared!\n", currLine);
-        errors_present = true;}
-            std::string temp;
-            temp.append($1.code); 
-            $$.code = strdup(temp.c_str());
-          }
+            {     
+              std::string temp;
+              temp.append($1.code);
+              temp.append($2.code);
+
+              $$.code = strdup(temp.c_str()); 
+              $$.place = strdup("");       
+            }
+
           ;
 
 function:   FUNCTION function_ident SEMICOLON BEGIN_PARAMS declarations END_PARAMS BEGIN_LOCALS declarations END_LOCALS BEGIN_BODY statements END_BODY 
@@ -122,7 +137,11 @@ function:   FUNCTION function_ident SEMICOLON BEGIN_PARAMS declarations END_PARA
 
   std::string name = $2.place;
   if(name == "main") // checks ident name for main
-  {mainFunc = true;}
+  {mainFunc = true;
+  inMain = true;}
+  else{
+    inMain = false;
+  }
 
   temp.append($5.code); // declarations appended
   std::string decs = $5.code;
@@ -144,7 +163,7 @@ function:   FUNCTION function_ident SEMICOLON BEGIN_PARAMS declarations END_PARA
   std::string statements = $11.code; 
 
   if (statements.find("continue") != std::string::npos)
-  {printf("** Line %d ERROR: Continue outsde loop in function %s\n", currLine, $2.place);
+  {printf("** Line %d ERROR: Can not continue outside loop\n", currLine - 1);
   errors_present = true;}
 
   temp.append(statements);
@@ -156,9 +175,11 @@ function:   FUNCTION function_ident SEMICOLON BEGIN_PARAMS declarations END_PARA
   printf("** Line: %d ERROR: Can not declare variable the same as program name\n", currLine);
   errors_present = true;}
 
-  if (!errors_present && mainFunc){
+  
+  /*if (!errors_present && mainFunc ){
   printf("%s",temp.c_str());
-  }
+  }*/
+  
 };
 
 identifiers: ident
@@ -195,6 +216,58 @@ declarations: /*empty*/
             ;
 
 declaration:  identifiers COLON ENUM L_PAREN identifiers R_PAREN 
+{
+  std::string part($1.place);
+  std::string temp;
+  std::string variable;
+  bool cont = true;
+  bool key_word = false; 
+
+
+  size_t oldpos = 0;
+  size_t pos = 0;
+
+  while (cont) {   // parses through the identifiers via "|"
+  pos = part.find("|", oldpos);
+  if (pos == std::string::npos){
+   temp.append(". ");
+                variable = part.substr(oldpos,pos);
+                temp.append(variable);
+                temp.append("\n");
+
+                cont = false;
+                }
+                else {
+                size_t len = pos - oldpos;
+                temp.append(". ");
+                variable = part.substr(oldpos, len);
+                temp.append(variable);
+                temp.append("\n");
+                }
+
+                for (unsigned int i = 0; i < key_words.size(); ++i) {
+                if (key_words.at(i) == variable) {
+                key_word = true;
+                  }
+                }
+
+                if (variables.find(variable) != variables.end()) {
+                printf("** Line: %d ERROR: Can not redeclare variable\n", currLine);
+                errors_present = true;
+                }
+                else if (key_word){
+                printf("** Line: %d ERROR: Can not declaration of reserved words\n", currLine);
+                errors_present = true;
+                }
+                else {
+                variables.insert(std::pair<std::string,int>(variable,0));
+                }
+                oldpos = pos + 1;
+              }
+
+              $$.code = strdup(temp.c_str());
+              $$.place = strdup(""); 
+            }
             |  identifiers COLON INTEGER 
             {
               std::string part($1.place);
@@ -252,6 +325,51 @@ declaration:  identifiers COLON ENUM L_PAREN identifiers R_PAREN
               printf("** Line: %d ERROR: Can not have array size be less than 1\n", currLine);
               errors_present = true;
                 }
+
+              std::string vars($1.place);
+              std::string temp;
+              std::string variable;
+              bool cont = true;
+              bool key_word = false;
+              size_t oldpos = 0;
+              size_t pos = 0;
+              while (cont) {
+              pos = vars.find("|", oldpos);
+              if (pos == std::string::npos) {
+              temp.append(".[] ");
+              variable = vars.substr(oldpos, pos);
+              temp.append(variable);
+              temp.append(", ");
+              temp.append(std::to_string($5));
+              temp.append("\n");
+              cont = false;
+              }
+              else {
+              size_t len = pos - oldpos;
+              temp.append(".[] ");
+              variable = vars.substr(oldpos, len);
+              temp.append(variable);
+              temp.append(", ");
+              temp.append(std::to_string($5));
+              temp.append("\n");
+              }
+    
+              if (variables.find(variable) != variables.end()) {
+                printf("** Line: %d ERROR: Can not redeclare variable\n", currLine);
+                errors_present = true;
+                }
+                else if (key_word){
+                printf("** Line: %d ERROR: Can not declaration of reserved words\n", currLine);
+                errors_present = true;
+                }
+                else {
+                variables.insert(std::pair<std::string,int>(variable,$5));
+                }
+              oldpos = pos + 1;
+            }
+  
+            $$.code = strdup(temp.c_str());
+            $$.place = strdup("");
             }
             ;
 
@@ -271,16 +389,35 @@ statements: statement SEMICOLON statements
 
 statement: var ASSIGN expression 
 {
-
   std::string temp;
-
   temp.append($1.code);
   temp.append($3.code);
+  std::string part = $3.place;
 
-  temp.append("= ");
+  if ($1.arr && $3.arr) {
+    part = new_temp();
+    temp.append(". ");
+    temp.append(part);
+    temp.append("\n");
+    temp.append("=[] ");
+    temp.append(part);
+    temp.append(", ");
+    temp.append($3.place);
+    temp.append("\n");
+    temp.append("[]= ");
+  }
+  else if ($1.arr) {
+    temp.append("[]= ");
+  }
+  else if ($3.arr) {
+    temp.append("=[] ");
+  }
+  else {
+    temp.append("= ");
+  }
   temp.append($1.place);
   temp.append(", ");
-  temp.append($3.place);
+  temp.append(part);
   temp.append("\n");
 
   $$.code = strdup(temp.c_str());
@@ -350,9 +487,76 @@ statement: var ASSIGN expression
             }
             | WHILE bool_expr BEGINLOOP statements ENDLOOP 
             {
+              std::string temp;
+              std::string cond = new_label();
+              std::string begin_loop = new_label();
+              std::string end_loop = new_label();
+              std::string statement = $4.code;
+              std::string jump;
+              jump.append(":= ");
+              jump.append(cond);
+              while(statement.find("continue") != std::string::npos) {
+                 statement.replace(statement.find("continue"), 8, jump);
+              }
+
+              temp.append(": ");
+              temp.append(cond);
+              temp.append("\n");
+
+              temp.append($2.code);
+
+              temp.append("?:= ");
+              temp.append(begin_loop);
+              temp.append(", ");
+              temp.append($2.place);
+              temp.append("\n");
+
+              temp.append(":= ");
+              temp.append(end_loop);
+              temp.append("\n");
+
+              temp.append(": ");
+              temp.append(begin_loop);
+              temp.append("\n");
+
+              temp.append(statement);
+              temp.append(":= ");
+              temp.append(cond);
+              temp.append("\n");
+
+              temp.append(": ");
+              temp.append(end_loop);
+              temp.append("\n");
+              $$.code = strdup(temp.c_str());
             }
             | DO BEGINLOOP statements ENDLOOP WHILE bool_expr 
             {
+              std::string temp;
+              std::string begin_loop = new_label();
+              std::string cond = new_label();
+              std::string statement = $3.code;
+              std::string jump;
+              jump.append(":= ");
+              jump.append(cond);
+              while (statement.find("continue") != std::string::npos) {
+              statement.replace(statement.find("continue"), 8, jump);
+              } 
+  
+              temp.append(": ");
+              temp.append(begin_loop);
+              temp.append("\n");
+              temp.append(statement);
+              temp.append(": ");
+              temp.append(cond);
+              temp.append("\n");
+              temp.append($6.code);
+              temp.append("?:= ");
+              temp.append(begin_loop);
+              temp.append(", ");
+              temp.append($6.place);
+              temp.append("\n");
+  
+              $$.code = strdup(temp.c_str());
             }
             | READ vars 
             {
@@ -382,8 +586,7 @@ statement: var ASSIGN expression
             }
             | CONTINUE 
             {
-              std::string temp = "continue\n";
-              $$.code = strdup(temp.c_str());
+              $$.code = strdup("continue\n");
             }
             | RETURN expression 
             {
@@ -860,7 +1063,6 @@ term: var
                 errors_present = true;
                 }
 
-
               $$.place = strdup(new_temp().c_str());
 
               std::string temp;
@@ -920,7 +1122,10 @@ var: ident
     printf("** Line: %d ERROR: Can not use undeclared variable\n", currLine);
     errors_present = true;
   }
-
+   else if (variables.find(std::string($1.place))->second > 0) {
+    printf("** Line: %d ERROR: Can not access array without index\n", currLine);
+    errors_present = true;
+  }
 
    $$.code = strdup(""); 
    $$.place = strdup($1.place); 
@@ -928,6 +1133,16 @@ var: ident
 }
             | ident L_SQAURE_BRACKET expression R_SQUARE_BRACKET 
             {
+
+              if (variables.find(std::string($1.place)) == variables.end()) {
+              printf("** Line: %d ERROR: Can not use undeclared variable\n", currLine);
+              errors_present = true;
+              }
+              else if (variables.find(std::string($1.place))->second == 0) {
+              printf("** Line: %d ERROR: Can not use regular variable as index\n", currLine);
+              errors_present = true;
+              }
+
               std::string temp;
               temp.append($1.place);
               temp.append(", ");
@@ -969,6 +1184,13 @@ std::string new_label()
 {
   std::string l = "l" + std::to_string(labelCount);
    labelCount++;
+   return l;
+}
+
+std::string new_enum()
+{
+  std::string l = "p" + std::to_string(enumCount);
+   enumCount++;
    return l;
 }
 
